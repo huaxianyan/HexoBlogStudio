@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/icon-512.png" width="96" alt="图标"></p>
+
 # HexoBlogStudio
 
 一个给 Hexo 博客用的 Windows 工作台：不用开 git bash 就能起本地预览、写完直接发布，写文章时配图目录就在右边。

@@ -3,6 +3,7 @@
                  xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
                  xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
                  Title="Hexo 博客工作台"
+                 Icon="Assets/app.ico"
                  Height="880" Width="1440" MinHeight="620" MinWidth="1040"
                  WindowStartupLocation="CenterScreen"
                  ExtendsContentIntoTitleBar="True"

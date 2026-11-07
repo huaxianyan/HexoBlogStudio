@@ -9,11 +9,19 @@
     <RootNamespace>HexoBlogStudio</RootNamespace>
     <AssemblyName>HexoBlogStudio</AssemblyName>
     <Version>0.1.0</Version>
+    <ApplicationIcon>Assets\app.ico</ApplicationIcon>
+    <Product>HexoBlogStudio</Product>
+    <Description>Hexo 博客的 Windows 工作台</Description>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="WPF-UI" Version="4.3.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 窗口标题栏与任务栏用同一份图标；ApplicationIcon 只管 exe 本身 -->
+    <Resource Include="Assets\app.ico" />
   </ItemGroup>
 
 </Project>
