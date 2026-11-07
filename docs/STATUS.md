@@ -78,6 +78,18 @@ v0.1.0 可用：文章列表、编辑器、配图工作区、本地预览、构�
 原链与 Meiryo（日文）一致，补了 YaHei 的链与 `Microsoft YaHei UI` 参考逐像素 0 差异；
 改完再截图放大看编辑器，汉字已是雅黑形态。
 
+
+## 首个 Release（2026-11-07）
+
+- 仓库：`huaxianyan/HexoBlogStudio`（公开，默认分支 `main`，只保留 main）。
+- 标签 `v0.1.0` → `fdfeb29`；产物 `HexoBlogStudio-0.1.0.exe`（6.7 MB，单文件、框架依赖
+  .NET 10 桌面运行时）+ 同名 `.sha256`；下载后 `sha256sum -c` 通过。
+- 发布说明在 `docs/release-notes/v0.1.0.md`，正文 = 说明 + 发布时追加的 `## 构建信息`。
+- 应用图标 `Assets/app.ico` 由 `tools/make-icon.py` 生成（蓝底圆角 + 白六边形 + 三条正文行，
+  蓝取自主题站 logo）。母版 1024、超采样 4 倍，导出 16/24/32/48/64/128/256 七个尺寸；
+  同一份文件同时用于 exe 图标与窗口图标。
+- 图标验收：`Icon.ExtractAssociatedIcon(exe)` 取出来放大看仍是蓝底白六边形。
+
 ## 下一步（还没做）
 
 - 新建文章（调 `hexo new`，带模板选择）
