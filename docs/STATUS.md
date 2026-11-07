@@ -51,6 +51,33 @@ v0.1.0 可用：文章列表、编辑器、配图工作区、本地预览、构�
 - 切换耗时只在超过 150 ms 时写日志，这次没有出现该行，说明正文切换在阈值内。
 - 纯逻辑自检 19 项全过（发布版 exe 也跑过一遍）。
 
+
+## 字体问题（2026-11-07）
+
+现象：编辑器与日志里的汉字显示成日文字形。
+
+根因在 WPF 的 CJK 回退表，不在应用代码的字体名写错：
+
+- `C:\Windows\Fonts\GlobalMonospace.CompositeFont`（WPF 自带）把
+  CJK 统一表意（3400-4DBF、4E00-9FBB）按 `Language` 分派：
+  `zh-Hans → Microsoft YaHei, SimSun`、`ja → Meiryo, MS Gothic`、
+  **无匹配的 Other → `Meiryo, Microsoft YaHei, MS Gothic`（日文优先）**。
+- WPF 元素的 `Language` 默认是 `en-US`，等于永远走 Other 分支。
+- 编辑器与日志的字体链是 `Cascadia Mono, Consolas, monospace`：三者都没有汉字，
+  `monospace` 也不是 Windows 字体名，于是整段汉字交给回退表 → Meiryo。
+
+修法两层，缺一不可：
+
+1. `App.OnStartup` 里 `FrameworkElement.LanguageProperty.OverrideMetadata(...)`
+   固定为 `zh-CN`，让回退表命中 `zh-Hans` 分支。
+2. 字体链显式补中文字体：等宽区域改成
+   `Cascadia Mono, Consolas, Microsoft YaHei UI, SimSun`，窗口默认
+   `Microsoft YaHei UI, Segoe UI, SimSun`。这样即使将来回退表变化也不受影响。
+
+验证：用 RenderTargetBitmap 渲染「直骨角包今高」，大字对比三组字体链——
+原链与 Meiryo（日文）一致，补了 YaHei 的链与 `Microsoft YaHei UI` 参考逐像素 0 差异；
+改完再截图放大看编辑器，汉字已是雅黑形态。
+
 ## 下一步（还没做）
 
 - 新建文章（调 `hexo new`，带模板选择）

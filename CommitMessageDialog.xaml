@@ -9,7 +9,7 @@
                  WindowBackdropType="Mica"
                  WindowCornerPreference="Round"
                  ShowInTaskbar="False"
-                 FontFamily="Microsoft YaHei UI" FontSize="13">
+                 FontFamily="Microsoft YaHei UI, Segoe UI, SimSun" FontSize="13">
     <Grid>
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />

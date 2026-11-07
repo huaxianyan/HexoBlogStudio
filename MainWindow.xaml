@@ -8,7 +8,7 @@
                  ExtendsContentIntoTitleBar="True"
                  WindowBackdropType="Mica"
                  WindowCornerPreference="Round"
-                 FontFamily="Microsoft YaHei UI" FontSize="13">
+                 FontFamily="Microsoft YaHei UI, Segoe UI, SimSun" FontSize="13">
 
     <Grid>
         <Grid.RowDefinitions>
@@ -96,7 +96,7 @@
                     </DockPanel>
                     <TextBox x:Name="Editor" AcceptsReturn="True" AcceptsTab="True" TextWrapping="NoWrap"
                              VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
-                             FontFamily="Cascadia Mono, Consolas, monospace" FontSize="13"
+                             FontFamily="Cascadia Mono, Consolas, Microsoft YaHei UI, SimSun" FontSize="13"
                              IsEnabled="False" TextChanged="OnEditorTextChanged"
                              PreviewKeyDown="OnEditorKeyDown" />
                 </DockPanel>
@@ -182,7 +182,7 @@
                 Background="{StaticResource LogBackgroundBrush}">
             <TextBox x:Name="LogBox" IsReadOnly="True" TextWrapping="NoWrap" AcceptsReturn="True"
                      VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
-                     FontFamily="Cascadia Mono, Consolas, monospace" FontSize="12"
+                     FontFamily="Cascadia Mono, Consolas, Microsoft YaHei UI, SimSun" FontSize="12"
                      Background="Transparent" Foreground="{StaticResource LogForegroundBrush}"
                      BorderThickness="0" Padding="10" />
         </Border>
