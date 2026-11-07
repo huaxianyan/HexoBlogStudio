@@ -1,0 +1,22 @@
+<Window x:Class="HexoBlogStudio.CommitMessageDialog"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="发布" Height="240" Width="520" ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner" FontFamily="Microsoft YaHei UI" FontSize="13"
+        ShowInTaskbar="False">
+    <Grid Margin="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <TextBlock Grid.Row="0" Text="这次改了什么？推送后会触发线上更新。" Margin="0,0,0,8" />
+        <TextBox Grid.Row="1" x:Name="MessageInput" AcceptsReturn="True" TextWrapping="Wrap"
+                 VerticalScrollBarVisibility="Auto" VerticalContentAlignment="Top" />
+        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,12,0,0">
+            <Button Content="取消" MinWidth="80" IsCancel="True" />
+            <Button Content="发布" MinWidth="80" IsDefault="True" Click="OnConfirmClick" />
+        </StackPanel>
+    </Grid>
+</Window>
