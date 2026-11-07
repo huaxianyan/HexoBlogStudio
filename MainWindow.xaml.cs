@@ -7,10 +7,16 @@ using System.Windows.Input;
 using System.Windows.Media.Imaging;
 using HexoBlogStudio.Models;
 using HexoBlogStudio.Services;
+using Wpf.Ui.Controls;
+// WPF-UI 也导出同名的 MessageBox 系列，这里固定用系统自带的
+using MessageBox = System.Windows.MessageBox;
+using MessageBoxButton = System.Windows.MessageBoxButton;
+using MessageBoxResult = System.Windows.MessageBoxResult;
+using MenuItem = System.Windows.Controls.MenuItem;
 
 namespace HexoBlogStudio;
 
-public partial class MainWindow : Window
+public partial class MainWindow : FluentWindow
 {
     private readonly Settings _settings;
     private readonly HexoServer _server = new();
@@ -22,7 +28,10 @@ public partial class MainWindow : Window
     private string _newline = "\r\n";
     private bool _loadingEditor;
     private bool _busy;
+    private CancellationTokenSource? _imageLoadCts;
+
     private const int MaxLogLines = 3000;
+    private const int ThumbnailParallelism = 3;
 
     public MainWindow()
     {
@@ -30,10 +39,13 @@ public partial class MainWindow : Window
         ClampToScreen();
         _settings = Settings.Load();
         _server.Output += AppendLog;
+        _server.Exited += OnServerExited;
         _server.Port = 4000;
         Loaded += OnLoaded;
         Closing += OnClosing;
     }
+
+    private bool IsDirty => _current is not null && !_loadingEditor && Editor.Text != _savedText;
 
     /// <summary>默认尺寸按屏幕可见区域收一收，避免小屏上右边一栏被切掉。</summary>
     private void ClampToScreen()
@@ -43,12 +55,11 @@ public partial class MainWindow : Window
         Height = Math.Min(Height, Math.Max(area.Height - 60, MinHeight));
     }
 
-    private bool IsDirty => _current is not null && !_loadingEditor && Editor.Text != _savedText;
-
     // ---------- 启动 ----------
 
     private async void OnLoaded(object sender, RoutedEventArgs e)
     {
+        UpdatePreviewUi();
         AppendLog("工作台已启动。");
         UpdateSitePath();
         if (!Settings.LooksLikeSite(_settings.SitePath))
@@ -129,7 +140,7 @@ public partial class MainWindow : Window
 
     private void OnSearchChanged(object sender, TextChangedEventArgs e) => ApplyFilter();
 
-    private void OnPostSelected(object sender, SelectionChangedEventArgs e)
+    private async void OnPostSelected(object sender, SelectionChangedEventArgs e)
     {
         if (PostList.SelectedItem is not Post selected || ReferenceEquals(selected, _current)) return;
         if (IsDirty)
@@ -139,22 +150,23 @@ public partial class MainWindow : Window
                 "切换文章", MessageBoxButton.YesNoCancel, MessageBoxImage.Question);
             if (choice == MessageBoxResult.Cancel)
             {
-                // 取消切换：把选中项放回去
-                Dispatcher.BeginInvoke(() => PostList.SelectedItem = _current);
+                _ = Dispatcher.BeginInvoke(() => PostList.SelectedItem = _current);
                 return;
             }
             if (choice == MessageBoxResult.Yes && !SaveCurrent()) return;
         }
 
-        LoadPost(selected);
+        await LoadPostAsync(selected);
     }
 
-    private void LoadPost(Post post)
+    /// <summary>切换文章要快：正文异步读，配图异步加载，界面不等任何一边。</summary>
+    private async Task LoadPostAsync(Post post)
     {
+        var stopwatch = Stopwatch.StartNew();
         _current = post;
         try
         {
-            var text = File.ReadAllText(post.FilePath, Encoding.UTF8);
+            var text = await File.ReadAllTextAsync(post.FilePath, Encoding.UTF8);
             _newline = text.Contains("\r\n") ? "\r\n" : "\n";
             _loadingEditor = true;
             Editor.Text = text.Replace("\r\n", "\n");
@@ -173,26 +185,83 @@ public partial class MainWindow : Window
             _loadingEditor = false;
         }
 
+        stopwatch.Stop();
+        // 正常切换应当在几十毫秒内完成，慢到能感觉出来才值得记一笔
+        if (stopwatch.ElapsedMilliseconds > 150)
+            AppendLog($"[切换] {post.Title} 用时 {stopwatch.ElapsedMilliseconds} ms");
+
         UpdateEditorState();
-        LoadImages(post);
         SetStatus(post.ImageDir is null ? $"{post.Title}（没有配图目录）" : post.Title);
+
+        // 不 await：配图在后台按顺序解码，文章本身已经可以编辑了
+        _ = LoadImagesAsync(post);
     }
 
-    private void LoadImages(Post post)
+    /// <summary>先把格子摆出来（立即返回），再并发解码缩略图；切换文章时取消上一批。</summary>
+    private async Task LoadImagesAsync(Post post)
     {
-        var items = new List<ImageItem>();
-        if (post.ImageDir is not null)
-        {
-            foreach (var file in PostLibrary.ListImages(post.ImageDir))
-                items.Add(new ImageItem(file.Path, file.CanPreview ? LoadThumbnail(file.Path) : null));
-        }
+        _imageLoadCts?.Cancel();
+        _imageLoadCts?.Dispose();
+        var cts = new CancellationTokenSource();
+        _imageLoadCts = cts;
 
+        var items = PostLibrary.ListImages(post.ImageDir)
+            .Select(file => new ImageItem(file.Path, file.CanPreview))
+            .ToList();
+
+        if (cts.IsCancellationRequested) return;
         ImageList.ItemsSource = items;
         ImagesHeaderText.Text = post.ImageKey is null ? "图片工作区" : $"图片工作区 · {post.ImageKey}";
         OpenImageFolderButton.IsEnabled = post.ImageDir is not null;
-        AppendLog(items.Count == 0
-            ? $"{post.Title}：没有配图。"
-            : $"{post.Title}：配图 {items.Count} 张。");
+        ImageEmptyHint.Visibility = items.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+
+        if (items.Count == 0)
+        {
+            AppendLog($"{post.Title}：没有配图。");
+            return;
+        }
+
+        using var slots = new SemaphoreSlim(ThumbnailParallelism);
+        var loads = items.Where(item => item.CanPreview).Select(async item =>
+        {
+            try
+            {
+                await slots.WaitAsync(cts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+
+            try
+            {
+                var thumbnail = await Task.Run(() => LoadThumbnail(item.Path), cts.Token);
+                if (cts.IsCancellationRequested) return;
+                if (thumbnail is null)
+                {
+                    await Dispatcher.InvokeAsync(item.MarkFailed);
+                    return;
+                }
+                await Dispatcher.InvokeAsync(() => item.Thumbnail = thumbnail);
+            }
+            catch (OperationCanceledException)
+            {
+                // 切换文章了，丢掉这一批
+            }
+            catch (Exception ex)
+            {
+                AppendLog($"缩略图读取失败：{Path.GetFileName(item.Path)} — {ex.Message}");
+                await Dispatcher.InvokeAsync(item.MarkFailed);
+            }
+            finally
+            {
+                slots.Release();
+            }
+        });
+
+        await Task.WhenAll(loads);
+        if (!cts.IsCancellationRequested)
+            AppendLog($"{post.Title}：配图 {items.Count} 张。");
     }
 
     private static BitmapSource? LoadThumbnail(string path)
@@ -225,7 +294,7 @@ public partial class MainWindow : Window
         EditorStateText.Text = _current is null ? string.Empty : dirty ? "有未保存的改动" : "已保存";
         EditorStateText.Foreground = dirty
             ? System.Windows.Media.Brushes.OrangeRed
-            : System.Windows.Media.Brushes.Gray;
+            : (System.Windows.Media.Brush)FindResource("TextFillColorSecondaryBrush");
     }
 
     private void OnEditorKeyDown(object sender, KeyEventArgs e)
@@ -318,16 +387,20 @@ public partial class MainWindow : Window
         if (_current?.ImageDir is { } dir) Launch(dir);
     }
 
-    // ---------- 本地预览 / 构建 / 发布 ----------
+    // ---------- 本地预览（一个按钮，来回切） ----------
 
-    private void OnPreviewClick(object sender, RoutedEventArgs e)
+    private void OnPreviewToggleClick(object sender, RoutedEventArgs e)
     {
         if (_server.IsRunning)
         {
-            AppendLog("本地预览已经在运行，直接打开站点即可。");
-            Launch("http://localhost:" + _server.Port);
+            StopPreview();
             return;
         }
+        StartPreview();
+    }
+
+    private void StartPreview()
+    {
         if (ProcessRunner.PortInUse(_server.Port))
         {
             AppendLog($"端口 {_server.Port} 已被占用：可能有别处的 hexo server 在跑，先停掉再启动。");
@@ -339,28 +412,48 @@ public partial class MainWindow : Window
         {
             _server.Start(_settings.SitePath);
             AppendLog($"正在启动本地预览：http://localhost:{_server.Port}（首次启动要等几秒）");
-            SetStatus($"本地预览启动中 · 端口 {_server.Port}");
+            UpdatePreviewUi();
         }
         catch (Exception ex)
         {
             AppendLog($"启动失败：{ex.Message}");
             SetStatus("本地预览启动失败");
+            UpdatePreviewUi();
         }
     }
 
-    private void OnStopClick(object sender, RoutedEventArgs e)
+    private void StopPreview()
     {
-        if (!_server.IsRunning)
-        {
-            AppendLog("本地预览没有在运行。");
-            return;
-        }
         _server.Stop();
         AppendLog("本地预览已停止。");
         SetStatus("本地预览已停止");
+        UpdatePreviewUi();
+    }
+
+    private void OnServerExited()
+    {
+        if (!Dispatcher.CheckAccess())
+        {
+            _ = Dispatcher.BeginInvoke(OnServerExited);
+            return;
+        }
+        UpdatePreviewUi();
+    }
+
+    private void UpdatePreviewUi()
+    {
+        var running = _server.IsRunning;
+        PreviewButton.Content = running ? "停止本地预览" : "启动本地预览";
+        PreviewButton.Icon = new SymbolIcon { Symbol = running ? SymbolRegular.Stop24 : SymbolRegular.Play24 };
+        PreviewButton.Appearance = running ? ControlAppearance.Secondary : ControlAppearance.Primary;
+        OpenSiteButton.IsEnabled = running;
+
+        if (running) SetStatus($"本地预览运行中 · http://localhost:{_server.Port}");
     }
 
     private void OnOpenSiteClick(object sender, RoutedEventArgs e) => Launch("http://localhost:" + _server.Port);
+
+    // ---------- 构建与发布 ----------
 
     private async void OnBuildClick(object sender, RoutedEventArgs e)
     {
@@ -403,7 +496,7 @@ public partial class MainWindow : Window
     {
         if (_busy) return;
         _busy = true;
-        SetButtonsEnabled(false);
+        SetBusyUi(true);
         SetStatus($"{label}中…");
         try
         {
@@ -417,17 +510,16 @@ public partial class MainWindow : Window
         finally
         {
             _busy = false;
-            SetButtonsEnabled(true);
+            SetBusyUi(false);
         }
     }
 
-    private void SetButtonsEnabled(bool enabled)
+    private void SetBusyUi(bool busy)
     {
-        PreviewButton.IsEnabled = enabled;
-        StopButton.IsEnabled = enabled;
-        BuildButton.IsEnabled = enabled;
-        PublishButton.IsEnabled = enabled;
-        SaveButton.IsEnabled = enabled && IsDirty;
+        PreviewButton.IsEnabled = !busy;
+        BuildButton.IsEnabled = !busy;
+        PublishButton.IsEnabled = !busy;
+        SaveButton.IsEnabled = !busy && IsDirty;
     }
 
     // ---------- 日志与状态 ----------
@@ -436,7 +528,7 @@ public partial class MainWindow : Window
     {
         if (!Dispatcher.CheckAccess())
         {
-            Dispatcher.BeginInvoke(() => AppendLog(line));
+            _ = Dispatcher.BeginInvoke(() => AppendLog(line));
             return;
         }
 
@@ -479,6 +571,7 @@ public partial class MainWindow : Window
             if (choice == MessageBoxResult.Cancel) { e.Cancel = true; return; }
             if (choice == MessageBoxResult.Yes && !SaveCurrent()) { e.Cancel = true; return; }
         }
+        _imageLoadCts?.Cancel();
         _server.Dispose();
         _settings.Save();
     }

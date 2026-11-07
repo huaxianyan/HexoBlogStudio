@@ -17,6 +17,9 @@ public sealed class HexoServer : IDisposable
 
     public event Action<string>? Output;
 
+    /// <summary>进程退出时触发（不管是手动停还是自己崩了），界面据此复原按钮。</summary>
+    public event Action? Exited;
+
     public void Start(string siteRoot)
     {
         if (IsRunning) return;
@@ -39,7 +42,11 @@ public sealed class HexoServer : IDisposable
         var process = new Process { StartInfo = startInfo, EnableRaisingEvents = true };
         process.OutputDataReceived += (_, e) => { if (e.Data is not null) Output?.Invoke(ProcessRunner.StripAnsi(e.Data)); };
         process.ErrorDataReceived += (_, e) => { if (e.Data is not null) Output?.Invoke(ProcessRunner.StripAnsi(e.Data)); };
-        process.Exited += (_, _) => Output?.Invoke($"本地预览已退出（退出码 {SafeExitCode(process)}）");
+        process.Exited += (_, _) =>
+        {
+            Output?.Invoke($"本地预览已退出（退出码 {SafeExitCode(process)}）");
+            Exited?.Invoke();
+        };
         process.Start();
         process.BeginOutputReadLine();
         process.BeginErrorReadLine();

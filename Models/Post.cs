@@ -21,6 +21,9 @@ public sealed class Post
 
     public string ListLabel => $"{DateText}  {Title}";
 
+    /// <summary>列表项的无障碍名就是这个：不重写的话读屏器和自动化会读到类型名。</summary>
+    public override string ToString() => ListLabel;
+
     /// <summary>列表搜索用：标题、标签、文件名都能匹配上。</summary>
     public bool Matches(string keyword) =>
         Title.Contains(keyword, StringComparison.CurrentCultureIgnoreCase)

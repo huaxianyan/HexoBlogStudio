@@ -30,6 +30,27 @@ v0.1.0 可用：文章列表、编辑器、配图工作区、本地预览、构�
   坐标，截出来的窗口只有一部分，容易被误判成布局溢出。
 - 构建时 exe 被运行中的进程占用 → 先 `Get-Process HexoBlogStudio | Stop-Process`。
 
+
+## 第二轮改动（2026-11-07）
+
+- **界面换成 WPF-UI 4.3.0**（Fluent、Mica 背景、FluentWindow + TitleBar）。本机原先
+  一个 NuGet 源都没配，`dotnet nuget add source https://api.nuget.org/v3/index.json`
+  加上代理环境变量（`http_proxy`/`https_proxy` 指向 `127.0.0.1:37777`）才能还原。
+- **预览按钮合成一个**：未运行时「启动本地预览」，运行后变「停止本地预览」，图标与
+  主次色一起换；服务自己退出（崩溃或被外部杀掉）也会把按钮复原，靠 `HexoServer.Exited`。
+- **配图异步加载**：`LoadPostAsync` 只读正文（`File.ReadAllTextAsync`），配图交给
+  `LoadImagesAsync` 在后台跑，`SemaphoreSlim(3)` 限并发，每次切换取消上一批
+  （`CancellationTokenSource`）。缩略图解码 300px 宽，冻结点后回 UI 线程赋值。
+- **列表项无障碍名修正**：`Post.ToString()` 返回列表显示文本。原来 ListBoxItem 的
+  自动化名是类型名 `HexoBlogStudio.Models.Post`，读屏器和 UIA 都读不出来。
+
+### 验收数字（UIAutomation 实测）
+
+- 选中 22 张图的《九寨沟之旅》：`SelectionItemPattern.Select()` 12 ms 返回，
+  之后立刻能读到界面内容（没有卡住），日志稍后出现「配图 22 张」。
+- 切换耗时只在超过 150 ms 时写日志，这次没有出现该行，说明正文切换在阈值内。
+- 纯逻辑自检 19 项全过（发布版 exe 也跑过一遍）。
+
 ## 下一步（还没做）
 
 - 新建文章（调 `hexo new`，带模板选择）

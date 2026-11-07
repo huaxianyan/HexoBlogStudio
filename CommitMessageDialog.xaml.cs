@@ -3,7 +3,7 @@ using HexoBlogStudio.Services;
 
 namespace HexoBlogStudio;
 
-public partial class CommitMessageDialog : Window
+public partial class CommitMessageDialog : Wpf.Ui.Controls.FluentWindow
 {
     public string Message { get; private set; } = string.Empty;
 
@@ -18,7 +18,7 @@ public partial class CommitMessageDialog : Window
         var message = GitPublisher.SanitizeCommitMessage(MessageInput.Text);
         if (message.Length == 0)
         {
-            System.Windows.MessageBox.Show(this, "写一句提交说明再发布。", "说明是空的",
+            MessageBox.Show(this, "写一句提交说明再发布。", "说明是空的",
                 MessageBoxButton.OK, MessageBoxImage.Information);
             return;
         }
